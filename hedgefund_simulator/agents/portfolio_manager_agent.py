@@ -335,7 +335,7 @@ class PortfolioManagerAgent(BaseAgent):
         Args:
             ticker: Stock ticker
             signal: Signal from risk manager
-            price_data: Current price data
+            price_data: Current price data (pandas Series with price data)
             timestamp: Current timestamp
             
         Returns:
@@ -343,6 +343,13 @@ class PortfolioManagerAgent(BaseAgent):
         """
         if signal['action'] == 'hold':
             return {'status': 'no_action', 'reason': signal['reason']}
+            
+        # Ensure we're working with scalar values
+        if isinstance(signal['price'], (pd.Series, pd.DataFrame)):
+            signal['price'] = signal['price'].iloc[-1]  # Use the most recent price if it's a Series
+            
+        if isinstance(signal['quantity'], (pd.Series, pd.DataFrame)):
+            signal['quantity'] = int(signal['quantity'].iloc[-1])  # Ensure quantity is an integer
             
         # Check if we have enough cash for buy orders
         if signal['action'] == 'buy':
@@ -353,11 +360,11 @@ class PortfolioManagerAgent(BaseAgent):
             if len(self.positions) >= self.max_open_positions and ticker not in self.positions:
                 return {'status': 'no_action', 'reason': 'max_positions_reached'}
                 
-            # Check asset exposure
-            position_value = signal['quantity'] * signal['price']
+            # Check asset exposure - ensure we're comparing scalar values
+            position_value = float(signal['quantity']) * float(signal['price'])
             if position_value > max_position_value:
                 # Adjust quantity to respect max exposure
-                max_quantity = int(max_position_value / signal['price'])
+                max_quantity = int(max_position_value / float(signal['price']))
                 if max_quantity < 1:
                     return {'status': 'no_action', 'reason': 'insufficient_funds'}
                 signal['quantity'] = max_quantity

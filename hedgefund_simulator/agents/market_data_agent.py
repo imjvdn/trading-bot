@@ -58,20 +58,49 @@ class MarketDataAgent(BaseAgent):
         """
         df = data.copy()
         
+        # Debug: Print columns and first few rows of the data
+        print("\n=== Debug: Input data columns ===")
+        print(df.columns.tolist())
+        print("\n=== Debug: First few rows of data ===")
+        print(df.head())
+        
         # Simple Moving Averages
-        df['SMA_20'] = df['Close'].rolling(window=20).mean()
-        df['SMA_50'] = df['Close'].rolling(window=50).mean()
+        df['SMA_5'] = df['Close'].rolling(window=5, min_periods=1).mean()
+        df['SMA_20'] = df['Close'].rolling(window=20, min_periods=1).mean()
+        df['SMA_50'] = df['Close'].rolling(window=50, min_periods=1).mean()
         
         # RSI (Relative Strength Index)
         delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14, min_periods=1).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14, min_periods=1).mean()
         rs = gain / loss
         df['RSI'] = 100 - (100 / (1 + rs))
         
-        # Bollinger Bands
-        df['BB_upper'] = df['SMA_20'] + 2 * df['Close'].rolling(window=20).std()
-        df['BB_lower'] = df['SMA_20'] - 2 * df['Close'].rolling(window=20).std()
+        # Bollinger Bands - Simplified implementation
+        # First, ensure we have a clean Series for the calculations
+        close_prices = df['Close']
+        
+        # Calculate rolling mean and standard deviation
+        rolling_mean = close_prices.rolling(window=20, min_periods=1).mean()
+        rolling_std = close_prices.rolling(window=20, min_periods=1).std()
+        
+        # Calculate Bollinger Bands
+        df['BB_upper'] = rolling_mean + (2 * rolling_std)
+        df['BB_lower'] = rolling_mean - (2 * rolling_std)
+        
+        # Debug: Print columns after adding indicators
+        print("\n=== Debug: Columns after adding indicators ===")
+        print(df.columns.tolist())
+        print("\n=== Debug: First few rows with indicators ===")
+        print(df[['Close', 'SMA_5', 'SMA_20', 'RSI', 'BB_upper', 'BB_lower']].head())
+        
+        # Debug: Print data types and shapes
+        print("\n=== Debug: Data types and shapes ===")
+        print(f"df shape: {df.shape}")
+        print(f"Close shape: {df['Close'].shape}")
+        print(f"SMA_20 shape: {df['SMA_20'].shape}")
+        print(f"BB_upper shape: {df['BB_upper'].shape}")
+        print(f"BB_lower shape: {df['BB_lower'].shape}")
         
         return df
     

@@ -80,6 +80,12 @@ class RiskManagerAgent(BaseAgent):
             
         return stop_loss, take_profit
     
+    def _get_scalar_value(self, value):
+        """Helper method to safely extract scalar value from pandas objects."""
+        if hasattr(value, 'iloc'):
+            return value.iloc[-1] if len(value) > 0 else value.iloc[0] if hasattr(value, 'iloc') else value
+        return value
+    
     def check_risk_limits(
         self,
         current_position: Dict[str, Any],
@@ -99,22 +105,26 @@ class RiskManagerAgent(BaseAgent):
         if not current_position:
             return {'action': 'hold', 'reason': 'no_position'}
         
-        current_price = price_data['Close']
-        entry_price = current_position['entry_price']
-        stop_loss = current_position['stop_loss']
-        take_profit = current_position['take_profit']
+        # Ensure we're working with scalar values
+        current_price = self._get_scalar_value(price_data['Close'] if hasattr(price_data, 'Close') else price_data)
+        entry_price = self._get_scalar_value(current_position.get('avg_price', current_price))
+        stop_loss = self._get_scalar_value(current_position.get('stop_loss', 0))
+        take_profit = self._get_scalar_value(current_position.get('take_profit', float('inf')))
+        
+        # Determine position direction (default to long if not specified)
+        position_direction = current_position.get('direction', 'long')
         
         # Check stop loss and take profit
-        if current_position['direction'] == 'long':
+        if position_direction == 'long':
             if current_price <= stop_loss:
-                return {'action': 'sell', 'reason': 'stop_loss', 'price': stop_loss}
+                return {'action': 'sell', 'reason': 'stop_loss', 'price': float(stop_loss)}
             elif current_price >= take_profit:
-                return {'action': 'sell', 'reason': 'take_profit', 'price': take_profit}
+                return {'action': 'sell', 'reason': 'take_profit', 'price': float(take_profit)}
         else:  # short position
             if current_price >= stop_loss:
-                return {'action': 'buy', 'reason': 'stop_loss', 'price': stop_loss}
+                return {'action': 'buy', 'reason': 'stop_loss', 'price': float(stop_loss)}
             elif current_price <= take_profit:
-                return {'action': 'buy', 'reason': 'take_profit', 'price': take_profit}
+                return {'action': 'buy', 'reason': 'take_profit', 'price': float(take_profit)}
         
         # Check if position size exceeds maximum allowed
         position_value = current_position['quantity'] * current_price

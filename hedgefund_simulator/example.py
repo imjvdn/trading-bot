@@ -12,8 +12,8 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
 # Import the simulator components
-from backtest_engine import BacktestEngine
-from config import CONFIG
+from hedgefund_simulator.backtest_engine import BacktestEngine
+from hedgefund_simulator.config import CONFIG
 
 # Set up logging
 import logging
@@ -71,30 +71,57 @@ def analyze_results(results):
     print("DETAILED BACKTEST ANALYSIS")
     print("="*80)
     
-    # Extract trade history
-    trades = pd.DataFrame(results['trades'])
-    
-    if not trades.empty:
-        # Calculate trade statistics
-        winning_trades = trades[trades['realized_pnl'] > 0]
-        losing_trades = trades[trades['realized_pnl'] < 0]
+    try:
+        # Extract trade history if available
+        if 'trades' not in results or not results['trades']:
+            print("\nNo trade history available for analysis.")
+            return
+            
+        trades = pd.DataFrame(results['trades'])
         
-        print(f"\nTrade Statistics:")
-        print(f"  - Total Trades: {len(trades)}")
-        print(f"  - Winning Trades: {len(winning_trades)} ({len(winning_trades)/len(trades)*100:.1f}%)")
-        print(f"  - Losing Trades: {len(losing_trades)} ({len(losing_trades)/len(trades)*100:.1f}%)")
-        
-        if not winning_trades.empty:
-            print(f"\nWinning Trades:")
-            print(f"  - Avg. Return: ${winning_trades['realized_pnl'].mean():.2f} per trade")
-            print(f"  - Max Return: ${winning_trades['realized_pnl'].max():.2f}")
-            print(f"  - Min Return: ${winning_trades['realized_pnl'].min():.2f}")
-        
-        if not losing_trades.empty:
-            print(f"\nLosing Trades:")
-            print(f"  - Avg. Loss: ${losing_trades['realized_pnl'].mean():.2f} per trade")
-            print(f"  - Max Loss: ${losing_trades['realized_pnl'].min():.2f}")
-            print(f"  - Min Loss: ${losing_trades['realized_pnl'].max():.2f}")
+        if not trades.empty:
+            # Check if we have PnL information
+            pnl_column = None
+            for col in ['realized_pnl', 'pnl', 'profit_loss']:
+                if col in trades.columns:
+                    pnl_column = col
+                    break
+            
+            if pnl_column is None:
+                print("\nNo PnL information available in trade history.")
+                print("Available columns:", ", ".join(trades.columns))
+                return
+                
+            # Calculate trade statistics
+            winning_trades = trades[trades[pnl_column] > 0]
+            losing_trades = trades[trades[pnl_column] < 0]
+            
+            print(f"\nTrade Statistics (using '{pnl_column}' column):")
+            print(f"  - Total Trades: {len(trades)}")
+            
+            if len(trades) > 0:
+                print(f"  - Winning Trades: {len(winning_trades)} ({len(winning_trades)/len(trades)*100:.1f}%)")
+                print(f"  - Losing Trades: {len(losing_trades)} ({len(losing_trades)/len(trades)*100:.1f}%)")
+                
+                if not winning_trades.empty:
+                    print(f"\nWinning Trades:")
+                    print(f"  - Avg. Return: ${winning_trades[pnl_column].mean():.2f} per trade")
+                    print(f"  - Max Return: ${winning_trades[pnl_column].max():.2f}")
+                    print(f"  - Min Return: ${winning_trades[pnl_column].min():.2f}")
+                
+                if not losing_trades.empty:
+                    print(f"\nLosing Trades:")
+                    print(f"  - Avg. Loss: ${losing_trades[pnl_column].mean():.2f} per trade")
+                    print(f"  - Max Loss: ${losing_trades[pnl_column].min():.2f}")
+                    print(f"  - Min Loss: ${losing_trades[pnl_column].max():.2f}")
+            
+            # Print first few trades for reference
+            print("\nFirst few trades:")
+            print(trades.head().to_string())
+    except Exception as e:
+        print(f"\nError analyzing results: {str(e)}")
+        import traceback
+        traceback.print_exc()
     
     # Extract equity curve
     equity_curve = pd.DataFrame(results['equity_curve'])
