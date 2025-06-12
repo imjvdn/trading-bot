@@ -1,6 +1,10 @@
+import logging
 from typing import Dict, Any, List, Optional
 import pandas as pd
 from .base_agent import BaseAgent
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 class PortfolioManagerAgent(BaseAgent):
     """Agent responsible for managing the portfolio and making final trade decisions."""
@@ -106,52 +110,65 @@ class PortfolioManagerAgent(BaseAgent):
         return f"{value*100:.2f}%"
     
     def _log_trade_execution(self, trade: Dict[str, Any], position: Dict[str, Any], portfolio_value: Dict[str, float]) -> None:
-        """Log trade execution details to the console.
+        """Log trade execution details to the console in a clean, tabular format.
         
         Args:
             trade: Trade details
             position: Current position details (after trade)
             portfolio_value: Current portfolio value metrics
         """
+        # Format values
         action = trade['action'].upper()
         ticker = trade['ticker']
         quantity = trade['quantity']
         price = self._format_currency(trade['price'])
         total_value = self._format_currency(trade['value'])
-        commission = self._format_currency(trade['commission'])
         cash = self._format_currency(portfolio_value['cash'])
-        positions_value = self._format_currency(portfolio_value['positions_value'])
-        total_value = self._format_currency(portfolio_value['total_value'])
+        portfolio_total = self._format_currency(portfolio_value['total_value'])
         
-        # Position details
-        position_str = ""
-        if position:
-            position_size = position['quantity'] * position['current_price']
-            position_pct = (position_size / portfolio_value['total_value']) * 100
-            position_str = (
-                f" | Position: {position['quantity']} shares ({self._format_currency(position_size)}, "
-                f"{position_pct:.1f}% of portfolio)"
-            )
+        # Format timestamp
+        timestamp = trade['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
         
-        # Format the log message
-        log_msg = (
-            f"{trade['timestamp'].strftime('%Y-%m-%d %H:%M:%S')} | {ticker} | {action} | "
-            f"Qty: {quantity} @ {price} | Value: {total_value} | Comm: {commission} | "
-            f"Cash: {cash} | Positions: {positions_value} | Total: {total_value}"
-            f"{position_str} | Reason: {trade.get('reason', 'N/A')}"
-        )
+        # Create position info
+        position_size = position.get('quantity', 0) if position else 0
+        position_value = position_size * position.get('current_price', 0) if position else 0
+        position_pct = (position_value / portfolio_value['total_value']) * 100 if portfolio_value['total_value'] > 0 else 0
         
-        # Add P&L information if this is a closing trade
+        # Format P&L if available
+        pnl_info = ""
         if 'realized_pnl' in trade:
             pnl = trade['realized_pnl']
             pnl_pct = trade.get('realized_pnl_pct', 0) * 100
             pnl_sign = "+" if pnl >= 0 else ""
-            log_msg += (
-                f"\n  → P&L: {pnl_sign}{self._format_currency(abs(pnl))} "
-                f"({pnl_sign}{abs(pnl_pct):.2f}%)"
-            )
+            pnl_info = f" | P&L: {pnl_sign}${abs(pnl):.2f} ({pnl_sign}{abs(pnl_pct):.1f}%)"
         
-        print(log_msg)
+        # Print trade execution header
+        print(f"\n{'='*100}")
+        print(f"TRADE EXECUTED: {timestamp}")
+        print(f"{'='*100}")
+        
+        # Print trade details
+        print(f"{'Action:':<15} {action} {quantity} shares of {ticker} @ {price}")
+        print(f"{'Value:':<15} {total_value}")
+        if pnl_info:
+            print(f"{'P&L:':<15} {pnl_info[4:]}")
+        
+        # Print position details
+        print(f"\n{'POSITION DETAILS':<20}")
+        print(f"{'Current Position:':<20} {position_size} shares")
+        print(f"{'Position Value:':<20} ${position_value:,.2f} ({position_pct:.1f}% of portfolio)")
+        
+        # Print portfolio summary
+        print(f"\n{'PORTFOLIO SUMMARY':<20}")
+        print(f"{'Cash:':<20} {cash}")
+        print(f"{'Positions:':<20} ${portfolio_value['positions_value']:,.2f}")
+        print(f"{'Total:':<20} {portfolio_total}")
+        
+        # Print reason if available
+        if trade.get('reason'):
+            print(f"\n{'Reason:':<15} {trade['reason']}")
+        
+        print(f"{'='*100}")
     
     def execute_trade(
         self, 

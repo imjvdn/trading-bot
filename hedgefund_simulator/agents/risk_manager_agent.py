@@ -37,24 +37,57 @@ class RiskManagerAgent(BaseAgent):
         Returns:
             Tuple of (quantity, position_value)
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Safely extract scalar values from potential pandas Series/DataFrames
+        price_val = float(price.iloc[-1] if hasattr(price, 'iloc') else price)
+        portfolio_val = float(portfolio_value.iloc[-1] if hasattr(portfolio_value, 'iloc') else portfolio_value)
+        atr_val = float(atr.iloc[-1]) if atr is not None and hasattr(atr, 'iloc') and not atr.empty else atr
+        
+        # Format ATR value safely
+        atr_str = f"{atr_val:.4f}" if atr_val is not None else "N/A"
+        
+        logger.debug(
+            f"Calculating position size - "
+            f"Price: ${price_val:.2f}, "
+            f"Portfolio: ${portfolio_val:.2f}, "
+            f"ATR: {atr_str}"
+        )
+        
         # Calculate maximum position value based on portfolio percentage
-        max_position_value = portfolio_value * self.max_position_size
+        max_position_value = portfolio_val * self.max_position_size
+        logger.debug(f"Max position value ({self.max_position_size*100}% of portfolio): ${max_position_value:.2f}")
         
         # If ATR is provided, adjust position size based on volatility
         if atr is not None and atr > 0:
             # Use ATR to scale position size (higher ATR = smaller position)
             volatility_factor = 1.0 / (1.0 + atr / price)
+            original_max = max_position_value
             max_position_value *= volatility_factor
+            logger.debug(f"ATR-based adjustment - Volatility factor: {volatility_factor:.4f}, "
+                       f"Adjusted max position: ${max_position_value:.2f} (from ${original_max:.2f})")
         
         # Calculate quantity based on position value and current price
-        quantity = int(max_position_value / price)
+        if price_val <= 0:
+            logger.warning(f"Invalid price (${price_val:.2f}) - cannot calculate position size")
+            return 0, 0.0
+            
+        quantity = int(max_position_value / price_val)
+        
+        # Log intermediate calculations
+        logger.debug(f"Raw quantity calculation: ${max_position_value:.2f} / ${price_val:.2f} = {quantity} shares")
         
         # Ensure we have at least 1 share if we can afford it
-        if quantity == 0 and max_position_value >= price:
+        if quantity == 0 and max_position_value >= price_val:
             quantity = 1
+            logger.debug("Adjusted quantity to minimum of 1 share")
+        elif quantity == 0:
+            logger.warning(f"Insufficient funds for 1 share - Need ${price_val:.2f} but only ${max_position_value:.2f} available")
         
-        position_value = quantity * price
+        position_value = quantity * price_val
         
+        logger.info(f"Position size: {quantity} shares (${position_value:.2f}) at ${price_val:.2f} each")
         return quantity, position_value
     
     def calculate_stop_loss_and_take_profit(

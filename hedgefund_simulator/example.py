@@ -17,6 +17,8 @@ from hedgefund_simulator.config import CONFIG
 
 # Set up logging
 import logging
+
+# Configure root logger
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -25,6 +27,17 @@ logging.basicConfig(
         logging.FileHandler('backtest.log')
     ]
 )
+
+# Set debug level for our package
+logging.getLogger('hedgefund_simulator').setLevel(logging.DEBUG)
+
+# Configure console handler for debug messages
+console = logging.StreamHandler()
+console.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console.setFormatter(formatter)
+logging.getLogger('hedgefund_simulator.agents.risk_manager_agent').addHandler(console)
+
 logger = logging.getLogger(__name__)
 
 def run_backtest():
