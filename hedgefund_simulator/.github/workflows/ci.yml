@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
 name: CI
 
 on:
@@ -22,23 +24,38 @@ jobs:
             python-version: '3.11'
 
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    
+    - name: Verify Python version
+      run: python --version
     
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -e .[dev]
     
+    - name: Verify package installation
+      run: |
+        python -c "import hedgefund_simulator; print(f'Successfully imported {hedgefund_simulator.__version__ if hasattr(hedgefund_simulator, "__version__") else "package"}')"
+    
     - name: Run tests with coverage
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || '' }}
-        USE_OPENAI: ${{ secrets.USE_OPENAI || 'false' }}
+        # Set USE_OPENAI based on secret
+        USE_OPENAI: ${{ secrets.USE_OPENAI }}
       run: |
+        # Default to false if not set or not 'true'
+        if [ -z "$USE_OPENAI" ] || [ "$USE_OPENAI" != "true" ]; then
+          USE_OPENAI="false"
+        fi
+        export USE_OPENAI
         python run_tests.py --no-coverage
     
     - name: Run linters
@@ -54,22 +71,33 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Python 3.9
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
+        cache: 'pip'
     
     - name: Install documentation dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install sphinx sphinx-rtd-theme
+        pip install -e .[docs]
     
-    - name: Check documentation builds
+    - name: Build documentation
       run: |
         cd docs
         make html
+        touch _build/html/.nojekyll  # For GitHub Pages
+    
+    - name: Upload documentation artifact
+      if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: docs/_build/html/
+        retention-days: 5
 
   test-deploy:
     name: Test Deploy to TestPyPI
@@ -78,33 +106,63 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Python 3.9
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
+        cache: 'pip'
     
     - name: Install build dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build twine
     
+    - name: Verify package version
+      id: version
+      run: |
+        # Extract version from pyproject.toml
+        VERSION=$(grep '^version = "' pyproject.toml | cut -d'"' -f2)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Package version: $VERSION"
+    
     - name: Build package
       run: |
         python -m build
+        echo "Built package version ${{ steps.version.outputs.version }}"
+    
+    - name: Verify distribution files
+      run: |
+        # Check that both sdist and wheel were created
+        ls -la dist/*.tar.gz dist/*.whl
     
     - name: Publish to TestPyPI
+      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
       env:
         TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN || secrets.PYPI_API_TOKEN }}
+        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN || '' }}
       run: |
-        if [ -z "$TWINE_PASSWORD" ]; then
-          echo "TEST_PYPI_API_TOKEN not set, skipping TestPyPI deployment"
+        # Skip if no token is provided
+        if [ -z "$TWINE_PASSWORD" ] || [ "$TWINE_PASSWORD" = "" ]; then
+          echo "::warning::TEST_PYPI_API_TOKEN not set, skipping TestPyPI deployment"
           exit 0
         fi
-        echo "Uploading to TestPyPI..."
-        twine upload --repository-url https://test.pypi.org/legacy/ --skip-existing dist/*
+        
+        # Verify we have files to upload
+        if [ ! -f dist/*.tar.gz ] || [ ! -f dist/*.whl ]; then
+          echo "::error::Distribution files not found. Build step may have failed."
+          exit 1
+        fi
+        
+        echo "Publishing version ${{ steps.version.outputs.version }} to TestPyPI"
+        twine upload --repository testpypi dist/*
+        
+        if [ $? -ne 0 ]; then
+          echo "::error::Failed to upload to TestPyPI"
+          exit 1
+        fi
 
   deploy:
     name: Deploy to PyPI Production
@@ -113,30 +171,60 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
     
     - name: Set up Python 3.9
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
+        cache: 'pip'
     
     - name: Install build dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build twine
     
+    - name: Verify package version
+      id: version
+      run: |
+        # Extract version from pyproject.toml
+        VERSION=$(grep '^version = "' pyproject.toml | cut -d'"' -f2)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Package version: $VERSION"
+    
     - name: Build package
       run: |
         python -m build
+        echo "Built package version ${{ steps.version.outputs.version }}"
+    
+    - name: Verify distribution files
+      run: |
+        # Check that both sdist and wheel were created
+        ls -la dist/*.tar.gz dist/*.whl
     
     - name: Publish to PyPI
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       env:
         TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN || '' }}
       run: |
-        if [ -z "$TWINE_PASSWORD" ]; then
-          echo "PYPI_API_TOKEN not set, skipping PyPI deployment"
+        # Skip if no token is provided
+        if [ -z "$TWINE_PASSWORD" ] || [ "$TWINE_PASSWORD" = "" ]; then
+          echo "::warning::PYPI_API_TOKEN not set, skipping PyPI deployment"
           exit 0
         fi
-        echo "Uploading to PyPI..."
-        twine upload --skip-existing dist/*
+        
+        # Verify we have files to upload
+        if [ ! -f dist/*.tar.gz ] || [ ! -f dist/*.whl ]; then
+          echo "::error::Distribution files not found. Build step may have failed."
+          exit 1
+        fi
+        
+        echo "Publishing version ${{ steps.version.outputs.version }} to PyPI"
+        twine upload dist/*
+        
+        if [ $? -ne 0 ]; then
+          echo "::error::Failed to upload to PyPI"
+          exit 1
+        fi
