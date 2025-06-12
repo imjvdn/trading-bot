@@ -2,8 +2,8 @@
 
 # Market Data Configuration
 MARKET_DATA_CONFIG = {
-    'start_date': '2024-01-01',  # Start date for backtest (YYYY-MM-DD)
-    'end_date': '2024-01-31',    # End date for backtest (YYYY-MM-DD)
+    'start_date': '2023-01-01',  # Start date for backtest (YYYY-MM-DD)
+    'end_date': '2023-12-31',    # End date for backtest (YYYY-MM-DD)
     'interval': '1d',            # Data interval ('1d', '1h', etc.)
 }
 

@@ -56,7 +56,7 @@ Trading Bot Framework is a professional-grade algorithmic trading platform desig
 ### 🤖 Trading Features
 - **Multi-Asset**: Trade stocks, crypto, forex, futures, and more
 - **Multi-Exchange**: Unified API for multiple exchanges
-- **Backtesting**: Event-driven backtesting engine
+- **Backtesting**: Event-driven backtesting engine with realistic trade simulation
 - **Paper Trading**: Risk-free strategy testing
 - **Live Trading**: Production-ready execution
 - **Short Selling**: Full support for short positions
@@ -212,7 +212,7 @@ class MovingAverageCrossover(BaseStrategy):
               execution_handler: ExecutionHandler, risk_manager: RiskManager):
         """Handle new market data."""
         for symbol in self.symbols:
-            # Get historical data
+            # Download historical data for AAPL (2023)
             bars = data_handler.get_latest_bars(symbol, self.long_window)
             if len(bars) < self.long_window:
                 return  # Not enough data yet

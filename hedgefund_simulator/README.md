@@ -51,10 +51,11 @@ A modular, Python-based AI hedge fund simulator for backtesting trading strategi
    ```
 
 2. The script will:
-   - Download historical data for AAPL (Jan 2024)
-   - Run a backtest with the default strategy
+   - Download historical data for AAPL (2023)
+   - Run a backtest with the default moving average crossover strategy
    - Display performance metrics
    - Generate a plot of the equity curve and save it as `aapl_backtest_results.png`
+   - Display comprehensive performance metrics including realized PnL
 
 ## Project Structure
 
