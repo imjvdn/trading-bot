@@ -117,58 +117,41 @@ class PortfolioManagerAgent(BaseAgent):
             position: Current position details (after trade)
             portfolio_value: Current portfolio value metrics
         """
+        # Initialize header flag if not exists
+        if not hasattr(self, '_header_printed'):
+            self._header_printed = False
+            
         # Format values
         action = trade['action'].upper()
         ticker = trade['ticker']
-        quantity = trade['quantity']
-        price = self._format_currency(trade['price'])
-        total_value = self._format_currency(trade['value'])
-        cash = self._format_currency(portfolio_value['cash'])
-        portfolio_total = self._format_currency(portfolio_value['total_value'])
+        quantity = int(trade['quantity'])
+        price = float(trade['price'])
+        status = trade.get('status', 'pending').upper()
         
         # Format timestamp
-        timestamp = trade['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+        timestamp = pd.to_datetime(trade['timestamp']).strftime('%Y-%m-%d')
         
-        # Create position info
+        # Calculate position value
         position_size = position.get('quantity', 0) if position else 0
         position_value = position_size * position.get('current_price', 0) if position else 0
-        position_pct = (position_value / portfolio_value['total_value']) * 100 if portfolio_value['total_value'] > 0 else 0
+        total_value = portfolio_value['total_value']
+        cash = portfolio_value['cash']
         
-        # Format P&L if available
-        pnl_info = ""
-        if 'realized_pnl' in trade:
-            pnl = trade['realized_pnl']
-            pnl_pct = trade.get('realized_pnl_pct', 0) * 100
-            pnl_sign = "+" if pnl >= 0 else ""
-            pnl_info = f" | P&L: {pnl_sign}${abs(pnl):.2f} ({pnl_sign}{abs(pnl_pct):.1f}%)"
+        # Print header on first trade only
+        if not self._header_printed:
+            print("\n" + "=" * 100)
+            print(f"{'Date':<10} | {'Ticker':<6} | {'Status':<8} | {'Action':<6} | {'Qty':>8} | {'Price':>10} | {'Cash':>12} | {'Stock':>12} | {'Total':>12}")
+            print("-" * 120)
+            self._header_printed = True
         
-        # Print trade execution header
-        print(f"\n{'='*100}")
-        print(f"TRADE EXECUTED: {timestamp}")
-        print(f"{'='*100}")
-        
-        # Print trade details
-        print(f"{'Action:':<15} {action} {quantity} shares of {ticker} @ {price}")
-        print(f"{'Value:':<15} {total_value}")
-        if pnl_info:
-            print(f"{'P&L:':<15} {pnl_info[4:]}")
-        
-        # Print position details
-        print(f"\n{'POSITION DETAILS':<20}")
-        print(f"{'Current Position:':<20} {position_size} shares")
-        print(f"{'Position Value:':<20} ${position_value:,.2f} ({position_pct:.1f}% of portfolio)")
-        
-        # Print portfolio summary
-        print(f"\n{'PORTFOLIO SUMMARY':<20}")
-        print(f"{'Cash:':<20} {cash}")
-        print(f"{'Positions:':<20} ${portfolio_value['positions_value']:,.2f}")
-        print(f"{'Total:':<20} {portfolio_total}")
+        # Format the output line with fixed width columns
+        print(f"{timestamp} | {ticker:6} | {status:8} | {action:6} | {quantity:8d} | ${price:8.2f} | ${cash:10,.2f} | ${position_value:10,.2f} | ${total_value:10,.2f}")
         
         # Print reason if available
-        if trade.get('reason'):
-            print(f"\n{'Reason:':<15} {trade['reason']}")
-        
-        print(f"{'='*100}")
+        reason = trade.get('reason', '')
+        if reason:
+            print(f"{'Reason:':<10} {reason}")
+            print("-" * 120)
     
     def execute_trade(
         self, 
@@ -315,7 +298,9 @@ class PortfolioManagerAgent(BaseAgent):
             }
             
             # Log the trade execution
+            logger.debug(f"About to log trade: {trade}")
             self._log_trade_execution(trade, self.positions.get(ticker, {}), portfolio_value)
+            logger.debug("Trade logged successfully")
             
             return trade_result
             
@@ -358,18 +343,30 @@ class PortfolioManagerAgent(BaseAgent):
         Returns:
             Trade execution result
         """
-        if signal['action'] == 'hold':
-            return {'status': 'no_action', 'reason': signal['reason']}
-            
+        # Extract action and ensure it's valid
+        action = signal.get('action', 'hold')
+        
+        # If action is hold, return early
+        if action == 'hold':
+            return {'status': 'no_action', 'reason': signal.get('reason', 'no_reason_provided')}
+        
+        # Validate required fields
+        required_fields = ['price', 'quantity']
+        for field in required_fields:
+            if field not in signal:
+                logger.error(f"Missing required field in signal: {field}")
+                return {'status': 'error', 'reason': f'missing_{field}'}
+        
         # Ensure we're working with scalar values
-        if isinstance(signal['price'], (pd.Series, pd.DataFrame)):
-            signal['price'] = signal['price'].iloc[-1]  # Use the most recent price if it's a Series
-            
-        if isinstance(signal['quantity'], (pd.Series, pd.DataFrame)):
-            signal['quantity'] = int(signal['quantity'].iloc[-1])  # Ensure quantity is an integer
+        try:
+            price = float(signal['price'].iloc[-1] if hasattr(signal['price'], 'iloc') else signal['price'])
+            quantity = int(signal['quantity'].iloc[-1] if hasattr(signal['quantity'], 'iloc') else signal['quantity'])
+        except (ValueError, IndexError) as e:
+            logger.error(f"Error processing signal values: {e}")
+            return {'status': 'error', 'reason': 'invalid_signal_values'}
             
         # Check if we have enough cash for buy orders
-        if signal['action'] == 'buy':
+        if action == 'buy':
             portfolio_value = self.calculate_portfolio_value()['total_value']
             max_position_value = portfolio_value * self.max_asset_exposure
             
@@ -378,7 +375,7 @@ class PortfolioManagerAgent(BaseAgent):
                 return {'status': 'no_action', 'reason': 'max_positions_reached'}
                 
             # Check asset exposure - ensure we're comparing scalar values
-            position_value = float(signal['quantity']) * float(signal['price'])
+            position_value = float(quantity) * float(price)
             if position_value > max_position_value:
                 # Adjust quantity to respect max exposure
                 max_quantity = int(max_position_value / float(signal['price']))

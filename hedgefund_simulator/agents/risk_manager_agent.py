@@ -73,10 +73,35 @@ class RiskManagerAgent(BaseAgent):
             logger.warning(f"Invalid price (${price_val:.2f}) - cannot calculate position size")
             return 0, 0.0
             
+        # Ensure we're not dividing by a very small number
+        if abs(price_val) < 1e-8:
+            logger.warning(f"Price too close to zero: ${price_val:.8f}")
+            return 0, 0.0
+            
+        # Calculate quantity and ensure it's at least 1 if we have enough cash for at least 1 share
         quantity = int(max_position_value / price_val)
         
-        # Log intermediate calculations
-        logger.debug(f"Raw quantity calculation: ${max_position_value:.2f} / ${price_val:.2f} = {quantity} shares")
+        # Log detailed calculation information
+        logger.debug(
+            f"Position size calculation details:\n"
+            f"  - Price: ${price_val:.2f}\n"
+            f"  - Portfolio value: ${portfolio_val:.2f}\n"
+            f"  - Max position size: {self.max_position_size*100}% of portfolio = ${max_position_value:.2f}\n"
+            f"  - Raw quantity: {max_position_value:.2f} / {price_val:.2f} = {quantity} shares\n"
+            f"  - Position value: ${quantity * price_val:.2f}"
+        )
+        
+        # If we have enough for at least 1 share but got 0, log a warning
+        if quantity == 0 and max_position_value >= price_val:
+            logger.warning(
+                f"Position size rounded to 0 despite having sufficient funds. "
+                f"Price: ${price_val:.2f}, Max position: ${max_position_value:.2f}, "
+                f"Min position: ${price_val:.2f}"
+            )
+            # Return at least 1 share if we can afford it
+            if max_position_value >= price_val:
+                quantity = 1
+                logger.info(f"Adjusted quantity to 1 share (${price_val:.2f} <= ${max_position_value:.2f})")
         
         # Ensure we have at least 1 share if we can afford it
         if quantity == 0 and max_position_value >= price_val:
@@ -170,7 +195,9 @@ class RiskManagerAgent(BaseAgent):
                 return {
                     'action': 'reduce', 
                     'reason': 'position_size_limit',
-                    'reduce_by': reduce_by
+                    'reduce_by': reduce_by,
+                    'price': float(current_price),
+                    'quantity': min(reduce_by, current_position['quantity'])
                 }
         
         return {'action': 'hold', 'reason': 'no_trigger'}
@@ -195,40 +222,79 @@ class RiskManagerAgent(BaseAgent):
         Returns:
             Dictionary with trade instructions and risk parameters
         """
-        result = {
-            'action': 'hold',
-            'reason': 'no_signal',
-            'quantity': 0,
-            'price': price_data['Close'],
-            'stop_loss': None,
-            'take_profit': None
-        }
+        import logging
+        logger = logging.getLogger(__name__)
         
-        # First check if we need to exit any existing positions due to risk limits
-        if current_position:
-            risk_check = self.check_risk_limits(current_position, price_data, portfolio_value)
-            if risk_check['action'] != 'hold':
-                return {**result, **risk_check}
+        logger.debug(
+            f"Processing signal - Signal: {signal}, "
+            f"Current position: {current_position}, "
+            f"Portfolio value: ${portfolio_value:.2f}, "
+            f"ATR: {atr}"
+        )
         
-        # If no existing position and we have a signal, calculate position size
-        if not current_position and signal != 0:
-            price = price_data['Close']
-            quantity, position_value = self.calculate_position_size(
-                price, portfolio_value, atr
-            )
+        if signal == 0:
+            logger.debug("No signal (0) - returning hold")
+            return {'action': 'hold', 'reason': 'no_signal'}
             
-            if quantity > 0:
-                stop_loss, take_profit = self.calculate_stop_loss_and_take_profit(
-                    price, signal
-                )
-                
-                result.update({
-                    'action': 'buy' if signal > 0 else 'sell',
-                    'reason': 'signal',
-                    'quantity': quantity,
-                    'price': price,
-                    'stop_loss': stop_loss,
-                    'take_profit': take_profit
-                })
+        # Get current price and ensure it's a scalar
+        current_price = self._get_scalar_value(price_data['Close'] if hasattr(price_data, 'Close') else price_data)
+        logger.debug(f"Current price: ${current_price:.2f}")
+        
+        # Check risk limits for existing position
+        logger.debug("Checking risk limits...")
+        risk_check = self.check_risk_limits(current_position, price_data, portfolio_value)
+        if risk_check['action'] != 'hold':
+            logger.debug(f"Risk check triggered action: {risk_check}")
+            return risk_check
+        
+        logger.debug("No risk limits triggered")
+            
+        # If we get here, we have a valid signal and no risk limits were hit
+        action = 'buy' if signal > 0 else 'sell'
+        logger.debug(f"Processing {action} signal")
+        
+        # Log position sizing inputs
+        logger.debug(
+            f"Position sizing inputs - "
+            f"Price: ${current_price:.2f}, "
+            f"Portfolio: ${portfolio_value:.2f}, "
+            f"Max position size: {self.max_position_size*100}% = ${portfolio_value * self.max_position_size:.2f}, "
+            f"ATR: {atr}"
+        )
+        
+        # Calculate position size
+        quantity, position_value = self.calculate_position_size(
+            price=current_price,
+            portfolio_value=portfolio_value,
+            atr=atr
+        )
+        
+        # Log position sizing results
+        logger.debug(
+            f"Position sizing results - "
+            f"Quantity: {quantity}, "
+            f"Position value: ${position_value:.2f}, "
+            f"As % of portfolio: {position_value/portfolio_value*100:.2f}%"
+        )
+        
+        # Calculate stop loss and take profit levels
+        stop_loss, take_profit = self.calculate_stop_loss_and_take_profit(
+            entry_price=current_price,
+            signal=signal
+        )
+        
+        logger.debug(
+            f"Stop loss: ${stop_loss:.2f} ({abs((stop_loss-current_price)/current_price*100):.2f}%), "
+            f"Take profit: ${take_profit:.2f} ({abs((take_profit-current_price)/current_price*100):.2f}%)"
+        )
+        
+        result = {
+            'action': 'buy' if signal > 0 else 'sell',
+            'reason': 'signal',
+            'quantity': quantity,
+            'price': current_price,
+            'stop_loss': stop_loss,
+            'take_profit': take_profit
+        }
         
         return result
