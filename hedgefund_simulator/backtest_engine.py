@@ -377,32 +377,35 @@ class BacktestEngine:
         
         res = self.results
         
-        print("\n" + "="*50)
-        print(f"BACKTEST SUMMARY - {res.get('ticker', 'N/A')}")
+        print("\n" + "="*60)
+        print(f"BACKTEST SUMMARY")
+        print("="*60)
+        print(f"Asset: {res.get('ticker', 'N/A')}")
         print(f"Period: {self._safe_date_format(res.get('start_date'))} to {self._safe_date_format(res.get('end_date'))}")
-        print("-"*50)
+        print("-"*60)
         
-        # Portfolio metrics
-        print(f"Initial Capital: ${res['initial_capital']:,.2f}")
-        print(f"Final Portfolio Value: ${res['final_portfolio_value']:,.2f}")
-        print(f"Total Return: {res['total_return_pct']:,.2f}%")
-        print(f"Annualized Return: {res['annualized_return_pct']:,.2f}%")
-        print(f"Annualized Volatility: {res['annualized_volatility_pct']:,.2f}%")
-        print(f"Sharpe Ratio: {res['sharpe_ratio']:.2f}")
-        print(f"Max Drawdown: {res['max_drawdown_pct']:,.2f}%")
+        # Portfolio Performance
+        print("Portfolio Performance:")
+        print(f"  Initial Capital: ${res['initial_capital']:,.2f}")
+        print(f"  Final Value: ${res['final_portfolio_value']:,.2f}")
+        print(f"  Total Return: {res['total_return_pct']:,.2f}%")
+        print(f"  Annualized Return: {res['annualized_return_pct']:,.2f}%")
+        print(f"  Volatility: {res['annualized_volatility_pct']:,.2f}%")
+        print(f"  Sharpe Ratio: {res['sharpe_ratio']:.2f}")
+        print(f"  Max Drawdown: {res['max_drawdown_pct']:,.2f}%")
         
-        # Benchmark comparison
-        print("\n" + "-"*50)
-        print(f"Benchmark Return: {res['benchmark_return_pct']:,.2f}%")
-        print(f"Alpha (vs. Benchmark): {res['total_return_pct'] - res['benchmark_return_pct']:,.2f}%")
-        
-        # Trade statistics
+        # Trading Statistics
         if res['total_trades'] > 0:
-            print("\n" + "-"*50)
-            print(f"Total Trades: {res['total_trades']}")
-            print(f"Win Rate: {res['win_rate_pct']:.1f}%")
-            print(f"Average Win: ${res['avg_win']:,.2f}")
-            print(f"Average Loss: ${res['avg_loss']:,.2f}")
-            print(f"Profit Factor: {res['profit_factor']:.2f}")
+            print(f"\nTrading Statistics:")
+            print(f"  Total Trades: {res['total_trades']}")
+            print(f"  Win Rate: {res['win_rate_pct']:.1f}%")
+            print(f"  Average Win: ${res['avg_win']:,.2f}")
+            print(f"  Average Loss: ${res['avg_loss']:,.2f}")
+            print(f"  Profit Factor: {res['profit_factor']:.2f}")
         
-        print("="*50 + "\n")
+        # Benchmark Comparison
+        print(f"\nBenchmark Comparison:")
+        print(f"  Benchmark Return: {res['benchmark_return_pct']:,.2f}%")
+        print(f"  Alpha: {res['total_return_pct'] - res['benchmark_return_pct']:,.2f}%")
+        
+        print("="*60)

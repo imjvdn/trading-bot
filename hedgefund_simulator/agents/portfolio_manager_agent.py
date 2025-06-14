@@ -109,11 +109,12 @@ class PortfolioManagerAgent(BaseAgent):
         """
         return f"{value*100:.2f}%"
     
-    def _log_trade_execution(self, trade: Dict[str, Any], position: Dict[str, Any], portfolio_value: Dict[str, float]) -> None:
-        """Log trade execution details to the console in a clean, tabular format.
+    def log_trade(self, trade: Dict[str, Any], position: Dict[str, Any], portfolio_value: Dict[str, float]):
+        """
+        Log trade execution in a clean tabular format
         
         Args:
-            trade: Trade details
+            trade: Trade details including action, quantity, price, etc.
             position: Current position details (after trade)
             portfolio_value: Current portfolio value metrics
         """
@@ -122,36 +123,29 @@ class PortfolioManagerAgent(BaseAgent):
             self._header_printed = False
             
         # Format values
-        action = trade['action'].upper()
+        action = trade['action']
         ticker = trade['ticker']
-        quantity = int(trade['quantity'])
+        quantity = int(trade['quantity']) if trade['quantity'] > 0 else 0
         price = float(trade['price'])
-        status = trade.get('status', 'pending').upper()
         
         # Format timestamp
         timestamp = pd.to_datetime(trade['timestamp']).strftime('%Y-%m-%d')
         
         # Calculate position value
         position_size = position.get('quantity', 0) if position else 0
-        position_value = position_size * position.get('current_price', 0) if position else 0
+        position_value = position_size * position.get('current_price', price) if position else 0
         total_value = portfolio_value['total_value']
         cash = portfolio_value['cash']
         
         # Print header on first trade only
         if not self._header_printed:
-            print("\n" + "=" * 100)
-            print(f"{'Date':<10} | {'Ticker':<6} | {'Status':<8} | {'Action':<6} | {'Qty':>8} | {'Price':>10} | {'Cash':>12} | {'Stock':>12} | {'Total':>12}")
-            print("-" * 120)
+            print("Starting backtest...")
+            print("Date       Ticker Action Quantity    Price        Cash    Stock Total Value")
+            print("-" * 75)
             self._header_printed = True
         
-        # Format the output line with fixed width columns
-        print(f"{timestamp} | {ticker:6} | {status:8} | {action:6} | {quantity:8d} | ${price:8.2f} | ${cash:10,.2f} | ${position_value:10,.2f} | ${total_value:10,.2f}")
-        
-        # Print reason if available
-        reason = trade.get('reason', '')
-        if reason:
-            print(f"{'Reason:':<10} {reason}")
-            print("-" * 120)
+        # Format the output line to match the image exactly
+        print(f"{timestamp} {ticker:6} {action:6} {quantity:8d} {price:8.2f} {cash:11.2f} {position_size:8.0f} {total_value:11.2f}")
     
     def execute_trade(
         self, 
@@ -299,7 +293,7 @@ class PortfolioManagerAgent(BaseAgent):
             
             # Log the trade execution
             logger.debug(f"About to log trade: {trade}")
-            self._log_trade_execution(trade, self.positions.get(ticker, {}), portfolio_value)
+            self.log_trade(trade, self.positions.get(ticker, {}), portfolio_value)
             logger.debug("Trade logged successfully")
             
             return trade_result

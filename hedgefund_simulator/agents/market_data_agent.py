@@ -58,12 +58,6 @@ class MarketDataAgent(BaseAgent):
         """
         df = data.copy()
         
-        # Debug: Print columns and first few rows of the data
-        print("\n=== Debug: Input data columns ===")
-        print(df.columns.tolist())
-        print("\n=== Debug: First few rows of data ===")
-        print(df.head())
-        
         # Simple Moving Averages
         df['SMA_5'] = df['Close'].rolling(window=5, min_periods=1).mean()
         df['SMA_20'] = df['Close'].rolling(window=20, min_periods=1).mean()
@@ -87,20 +81,6 @@ class MarketDataAgent(BaseAgent):
         # Calculate Bollinger Bands
         df['BB_upper'] = rolling_mean + (2 * rolling_std)
         df['BB_lower'] = rolling_mean - (2 * rolling_std)
-        
-        # Debug: Print columns after adding indicators
-        print("\n=== Debug: Columns after adding indicators ===")
-        print(df.columns.tolist())
-        print("\n=== Debug: First few rows with indicators ===")
-        print(df[['Close', 'SMA_5', 'SMA_20', 'RSI', 'BB_upper', 'BB_lower']].head())
-        
-        # Debug: Print data types and shapes
-        print("\n=== Debug: Data types and shapes ===")
-        print(f"df shape: {df.shape}")
-        print(f"Close shape: {df['Close'].shape}")
-        print(f"SMA_20 shape: {df['SMA_20'].shape}")
-        print(f"BB_upper shape: {df['BB_upper'].shape}")
-        print(f"BB_lower shape: {df['BB_lower'].shape}")
         
         return df
     
