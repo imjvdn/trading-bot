@@ -28,15 +28,8 @@ logging.basicConfig(
     ]
 )
 
-# Set debug level for our package
-logging.getLogger('hedgefund_simulator').setLevel(logging.DEBUG)
-
-# Configure console handler for debug messages
-console = logging.StreamHandler()
-console.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console.setFormatter(formatter)
-logging.getLogger('hedgefund_simulator.agents.risk_manager_agent').addHandler(console)
+# Set info level for our package
+logging.getLogger('hedgefund_simulator').setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)
 
